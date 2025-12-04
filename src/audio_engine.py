@@ -233,7 +233,7 @@ class AudioEngine:
         return pygame.sndarray.make_sound(stereo)
 
     def note_on(self, note: int, velocity: int) -> None:
-        """Play drum sample for the given MIDI note."""
+        """Play drum sample for the given MIDI note with velocity-sensitive volume."""
         # Map note to drum type
         drum_type = self._note_map.get(note, "snare")  # default to snare for unmapped notes
         
@@ -242,8 +242,17 @@ class AudioEngine:
         if not sound:
             return
         
-        # Adjust volume based on velocity
-        volume = velocity / 127.0
+        # Adjust volume based on velocity with exponential curve for more natural dynamics
+        # MIDI velocity ranges from 1-127
+        # Use exponential curve to make quiet hits quieter and loud hits louder
+        velocity_normalized = velocity / 127.0
+        
+        # Apply exponential curve (power of 2 makes it more responsive)
+        volume = velocity_normalized ** 1.5
+        
+        # Ensure minimum audible volume for very soft hits
+        volume = max(0.1, min(1.0, volume))
+        
         sound.set_volume(volume)
         
         # Play the sound

@@ -29,3 +29,46 @@ desktop.ini
 
 # Logs
 *.log
+
+# PlatformIO (ESP32 build artifacts)
+.pio/
+.platformio/
+
+# Arduino build artifacts
+arduino/build/
+
+# LaTeX files
+*.tex
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+
+# Markdown documentation files
+*.md
+
+# Compiled binaries
+*.bin
+*.elf
+*.hex
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Audio/Sample files
+*.wav
+*.mp3
+*.sf2
+
+# Project folders to ignore
+airdrums/
+streamlit_app/

@@ -3,7 +3,11 @@
 Use this if `python -m src.main` fails due to module path issues in some environments.
 Run from project root:
 
-    python run.py --host 127.0.0.1 --port 6000
+    # Default (scans for "ESPDRUMS*" BLE devices):
+    python run.py
+    
+    # Custom BLE device name prefix:
+    python run.py --device-prefix "MYDRUMS"
 
 """
 from __future__ import annotations

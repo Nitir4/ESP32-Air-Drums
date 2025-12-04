@@ -7,18 +7,22 @@ import math
 class MidiUI:
     """Interactive drum kit UI that visualizes MIDI notes as a real drum kit with animations."""
 
-    # Color scheme - dark mode with neon accents
-    BG_DARK = "#0a0a0a"
-    BG_STAGE = "#1a1a2e"
+    # Color scheme - modern dark theme with vibrant neon accents
+    BG_DARK = "#0d0d0d"
+    BG_STAGE = "#16213e"
+    BG_GRADIENT_TOP = "#1a1a2e"
+    BG_GRADIENT_BOT = "#0f3460"
     DRUM_DEFAULT = "#2d3436"
-    DRUM_KICK = "#e74c3c"
-    DRUM_SNARE = "#3498db"
-    DRUM_HIHAT = "#f39c12"
-    DRUM_TOM = "#9b59b6"
-    DRUM_CYMBAL = "#1abc9c"
+    DRUM_KICK = "#ff3838"      # Vibrant red
+    DRUM_SNARE = "#00d9ff"    # Cyan blue
+    DRUM_HIHAT = "#ffd700"    # Gold
+    DRUM_TOM = "#a855f7"      # Purple
+    DRUM_CYMBAL = "#10b981"   # Emerald green
     DRUM_HIT = "#ffffff"
+    GLOW_COLOR = "#00ffff"    # Neon cyan glow
     TEXT_PRIMARY = "#ffffff"
-    TEXT_SECONDARY = "#95a5a6"
+    TEXT_SECONDARY = "#9ca3af"
+    ACCENT_PRIMARY = "#00d9ff"
 
     def __init__(self, on_close: Callable[[], None]):
         self.root = tk.Tk()
@@ -36,33 +40,49 @@ class MidiUI:
 
         # Track animation states
         self.drum_animations: Dict[str, int] = {}
+        # Track active ripple item ids per drum so we can clean them up
+        self._active_ripples: Dict[str, list] = {}
         
         # Main container
         main_frame = tk.Frame(self.root, bg=self.BG_DARK)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # Title bar
-        title_frame = tk.Frame(main_frame, bg=self.BG_DARK)
-        title_frame.pack(fill=tk.X, pady=(0, 10))
+        title_frame = tk.Frame(main_frame, bg=self.BG_DARK, height=60)
+        title_frame.pack(fill=tk.X, pady=(0, 15))
         
         title_label = tk.Label(
             title_frame,
-            text="🥁 ESP32 Air Drums",
-            font=("Segoe UI", 20, "bold"),
+            text="🥁 ESP32 AIR DRUMS",
+            font=("Segoe UI", 24, "bold"),
             bg=self.BG_DARK,
-            fg=self.TEXT_PRIMARY,
+            fg=self.ACCENT_PRIMARY,
         )
         title_label.pack(side=tk.LEFT)
         
-        self.status_var = tk.StringVar(value="Ready | Press F11 for fullscreen")
+        # Metrics display (FPS, hits, etc.)
+        metrics_frame = tk.Frame(title_frame, bg=self.BG_DARK)
+        metrics_frame.pack(side=tk.RIGHT, padx=10)
+        
+        self.status_var = tk.StringVar(value="⚡ Ready")
         status_label = tk.Label(
-            title_frame,
+            metrics_frame,
             textvariable=self.status_var,
-            font=("Consolas", 10),
+            font=("Consolas", 11, "bold"),
+            bg=self.BG_DARK,
+            fg=self.TEXT_PRIMARY,
+        )
+        status_label.pack(anchor=tk.E)
+        
+        self.metrics_var = tk.StringVar(value="Press F11 for fullscreen")
+        metrics_label = tk.Label(
+            metrics_frame,
+            textvariable=self.metrics_var,
+            font=("Consolas", 9),
             bg=self.BG_DARK,
             fg=self.TEXT_SECONDARY,
         )
-        status_label.pack(side=tk.RIGHT, padx=10)
+        metrics_label.pack(anchor=tk.E)
 
         # Drum kit canvas (main stage) - will resize with window
         self.canvas = tk.Canvas(
@@ -79,35 +99,51 @@ class MidiUI:
         # Draw the drum kit (will be drawn on first resize)
         # self._create_drum_kit()
 
-        # Info panel
+        # Info panel with velocity meter
         info_frame = tk.Frame(main_frame, bg=self.BG_DARK)
-        info_frame.pack(fill=tk.X)
+        info_frame.pack(fill=tk.X, pady=(5, 0))
         
-        self.info_var = tk.StringVar(value="Waiting for MIDI...")
+        # Left side - drum info
+        info_left = tk.Frame(info_frame, bg=self.BG_DARK)
+        info_left.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        
+        self.info_var = tk.StringVar(value="🎵 Waiting for MIDI input...")
         info_label = tk.Label(
-            info_frame,
+            info_left,
             textvariable=self.info_var,
-            font=("Segoe UI", 11),
+            font=("Segoe UI", 12, "bold"),
             bg=self.BG_DARK,
             fg=self.TEXT_PRIMARY,
+            anchor=tk.W,
         )
-        info_label.pack(side=tk.LEFT, padx=10)
-
+        info_label.pack(fill=tk.X)
+        
+        # Velocity meter canvas
+        self.velocity_canvas = tk.Canvas(
+            info_left,
+            height=8,
+            bg=self.BG_DARK,
+            highlightthickness=0,
+        )
+        self.velocity_canvas.pack(fill=tk.X, pady=(5, 0))
+        self.velocity_bar = None
+        
+        # Right side - quit button
         quit_btn = tk.Button(
             info_frame,
-            text="✕ QUIT",
+            text="✕ EXIT",
             command=self._on_quit,
-            font=("Segoe UI", 9, "bold"),
-            bg="#c0392b",
+            font=("Segoe UI", 10, "bold"),
+            bg="#dc2626",
             fg=self.TEXT_PRIMARY,
-            activebackground="#e74c3c",
+            activebackground="#ef4444",
             activeforeground=self.TEXT_PRIMARY,
             relief=tk.FLAT,
-            padx=15,
-            pady=8,
+            padx=20,
+            pady=10,
             cursor="hand2",
         )
-        quit_btn.pack(side=tk.RIGHT)
+        quit_btn.pack(side=tk.RIGHT, padx=10)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_quit)
     
@@ -129,8 +165,38 @@ class MidiUI:
         # Only redraw if canvas has meaningful size
         if event and event.width > 100 and event.height > 100:
             self.canvas.delete('all')
+            self._draw_background_gradient()
             self._create_drum_kit()
             self.drum_kit_created = True
+    
+    def _draw_background_gradient(self) -> None:
+        """Draw subtle gradient background on stage."""
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        
+        # Create radial gradient effect with rectangles
+        steps = 40
+        for i in range(steps):
+            # Interpolate from center (lighter) to edges (darker)
+            ratio = i / steps
+            # Simple color blend from BG_GRADIENT_TOP to BG_GRADIENT_BOT
+            r1, g1, b1 = self._hex_to_rgb(self.BG_GRADIENT_TOP)
+            r2, g2, b2 = self._hex_to_rgb(self.BG_GRADIENT_BOT)
+            
+            r = int(r1 + (r2 - r1) * ratio)
+            g = int(g1 + (g2 - g1) * ratio)
+            b = int(b1 + (b2 - b1) * ratio)
+            
+            color = f"#{r:02x}{g:02x}{b:02x}"
+            
+            # Draw horizontal strip
+            y1 = (h / steps) * i
+            y2 = (h / steps) * (i + 1)
+            self.canvas.create_rectangle(
+                0, y1, w, y2,
+                fill=color,
+                outline=""
+            )
 
     def _create_drum_kit(self) -> None:
         """Draw the drum kit layout on canvas - scaled to current window size."""
@@ -199,56 +265,93 @@ class MidiUI:
         }
 
     def _draw_drum(self, x: float, y: float, radius: float, label: str, color: str) -> list:
-        """Draw a drum (circle with label)."""
+        """Draw a drum (circle with label and shadow)."""
+        # Shadow (offset slightly)
+        shadow = self.canvas.create_oval(
+            x - radius + 4, y - radius + 4,
+            x + radius + 4, y + radius + 4,
+            fill="#000000",
+            outline="",
+        )
+        
         # Main drum circle
         drum = self.canvas.create_oval(
             x - radius, y - radius,
             x + radius, y + radius,
             fill=color,
             outline=self.DRUM_HIT,
-            width=3,
+            width=4,
         )
         
-        # Label
+        # Inner highlight for 3D effect
+        highlight = self.canvas.create_oval(
+            x - radius * 0.7, y - radius * 0.7,
+            x + radius * 0.7, y + radius * 0.7,
+            fill="",
+            outline=self._lighten_color(color, 0.3),
+            width=2,
+        )
+        
+        # Label with better font
         text = self.canvas.create_text(
             x, y,
             text=label,
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", int(radius / 5), "bold"),
             fill=self.TEXT_PRIMARY,
         )
         
-        return [drum, text]
+        return [drum, text, shadow, highlight]
 
     def _draw_cymbal(self, x: float, y: float, radius: float, label: str, color: str) -> list:
-        """Draw a cymbal (ellipse with label)."""
+        """Draw a cymbal (ellipse with shadow and highlight)."""
+        # Shadow
+        shadow = self.canvas.create_oval(
+            x - radius * 1.3 + 3, y - radius * 0.4 + 3,
+            x + radius * 1.3 + 3, y + radius * 0.4 + 3,
+            fill="#000000",
+            outline="",
+        )
+        
         # Cymbal ellipse (wider than tall)
         cymbal = self.canvas.create_oval(
             x - radius * 1.3, y - radius * 0.4,
             x + radius * 1.3, y + radius * 0.4,
             fill=color,
             outline=self.DRUM_HIT,
-            width=3,
+            width=4,
+        )
+        
+        # Shine effect
+        highlight = self.canvas.create_oval(
+            x - radius * 0.9, y - radius * 0.15,
+            x + radius * 0.9, y + radius * 0.15,
+            fill="",
+            outline=self._lighten_color(color, 0.4),
+            width=2,
         )
         
         # Label
         text = self.canvas.create_text(
             x, y,
             text=label,
-            font=("Segoe UI", 9, "bold"),
+            font=("Segoe UI", int(radius / 5.5), "bold"),
             fill=self.TEXT_PRIMARY,
         )
         
-        return [cymbal, text]
+        return [cymbal, text, shadow, highlight]
 
     def set_status(self, text: str) -> None:
+        """Update connection status."""
         self.status_var.set(f"🔗 {text}")
+        self.metrics_var.set("Press F11 for fullscreen • ESC to exit")
 
     def show_note(self, note: int, velocity: int) -> None:
         """Animate the drum hit when a MIDI note is received."""
         drum_info = self.note_to_drum.get(note)
         if not drum_info:
             # Unknown note - just update info
-            self.info_var.set(f"Note {note} • vel {velocity}")
+            self.info_var.set(f"🎵 Note {note} • Velocity {velocity}")
+            self._update_velocity_meter(velocity)
             return
         
         drum_name, drum_objects = drum_info
@@ -256,16 +359,66 @@ class MidiUI:
         # Update info display
         drum_display = self._note_to_drum_name(note)
         note_name = self._note_to_name(note)
-        self.info_var.set(f"🥁 {drum_display} • Note {note} ({note_name}) • Velocity {velocity}")
+        self.info_var.set(f"🥁 {drum_display} • Note {note} ({note_name}) • Velocity {velocity}/127")
+        
+        # Update velocity meter
+        self._update_velocity_meter(velocity)
         
         # Animate the drum hit
         self._animate_drum_hit(drum_name, drum_objects, velocity)
+    
+    def _update_velocity_meter(self, velocity: int) -> None:
+        """Update the velocity meter bar."""
+        w = self.velocity_canvas.winfo_width()
+        h = self.velocity_canvas.winfo_height()
+        
+        if w < 10:  # Not yet rendered
+            return
+        
+        # Clear previous bar
+        self.velocity_canvas.delete('all')
+        
+        # Background
+        self.velocity_canvas.create_rectangle(
+            0, 0, w, h,
+            fill="#1f2937",
+            outline=""
+        )
+        
+        # Velocity bar (colored based on intensity)
+        bar_width = (velocity / 127.0) * w
+        
+        # Color gradient: green -> yellow -> red
+        if velocity < 42:
+            color = "#10b981"  # Green
+        elif velocity < 85:
+            color = "#fbbf24"  # Yellow
+        else:
+            color = "#ef4444"  # Red
+        
+        if bar_width > 0:
+            self.velocity_canvas.create_rectangle(
+                0, 0, bar_width, h,
+                fill=color,
+                outline=""
+            )
 
     def _animate_drum_hit(self, drum_name: str, drum_objects: list, velocity: int) -> None:
         """Create smooth ripple and glow animation for drum hit."""
         # Cancel any existing animation for this drum
         if drum_name in self.drum_animations:
-            self.root.after_cancel(self.drum_animations[drum_name])
+            try:
+                self.root.after_cancel(self.drum_animations[drum_name])
+            except Exception:
+                # ignore if it's already fired or invalid
+                pass
+        # Remove any lingering ripple canvas items from a previous animation
+        if drum_name in self._active_ripples:
+            try:
+                for old_r in self._active_ripples.pop(drum_name):
+                    self.canvas.delete(old_r)
+            except Exception:
+                pass
         
         drum_obj = drum_objects[0]  # The main shape (oval)
         
@@ -298,6 +451,8 @@ class MidiUI:
                 fill=""
             )
             ripple_ids.append(ripple)
+        # remember these ripples so we can delete them if a new hit arrives
+        self._active_ripples[drum_name] = list(ripple_ids)
         
         # Animation parameters
         max_radius = radius * 1.8
@@ -311,7 +466,16 @@ class MidiUI:
             if step_count[0] > steps:
                 # Clean up ripples
                 for ripple in ripple_ids:
-                    self.canvas.delete(ripple)
+                    try:
+                        self.canvas.delete(ripple)
+                    except Exception:
+                        pass
+                # also clear registry entry if present
+                if drum_name in self._active_ripples:
+                    try:
+                        del self._active_ripples[drum_name]
+                    except Exception:
+                        pass
                 
                 # Final state - return to base color
                 self.canvas.itemconfig(drum_obj, fill=base_color, width=3)
@@ -390,6 +554,14 @@ class MidiUI:
         """Convert hex color to RGB tuple."""
         hex_color = hex_color.lstrip('#')
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    
+    def _lighten_color(self, hex_color: str, factor: float) -> str:
+        """Lighten a hex color by a factor (0-1)."""
+        r, g, b = self._hex_to_rgb(hex_color)
+        r = min(255, int(r + (255 - r) * factor))
+        g = min(255, int(g + (255 - g) * factor))
+        b = min(255, int(b + (255 - b) * factor))
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     def _note_to_drum_name(self, note: int) -> str:
         """Convert MIDI note to drum name."""
