@@ -104,5 +104,3 @@ mpremote connect COM3 reset
 - WAV samples are optional - synthesized beeps are used as fallback
 - BLE mode requires `bleak` library (`pip install bleak`)
 
-## License
-MIT
