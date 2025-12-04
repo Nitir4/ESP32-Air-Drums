@@ -1,29 +1,26 @@
-# 🥁 Arduino Firmware for ESP32 Air Drums
+# Arduino Firmware for ESP32 Air Drums
 
 Welcome! This folder contains all the firmware you need to bring your wireless air drums to life. Think of these files as the "brains" for each drumstick and pedal—they tell your ESP32 what to do when you swing your arms or stomp your feet.
 
 Don't worry if you see a lot of files here. Most of them do similar things but in slightly different ways depending on how you want to set up your drum kit.
 
----
 
-## 🤔 What's in Here?
+## What's in Here?
 
-### Your Drumsticks 🥁
+### Your Drumsticks
 
 Think of your drumsticks as the stars of the show. You'll typically use two of them:
 
 **The Right Stick** - Your WiFi Hub (`tcp_ap_relay.ino`)
-- This is the "boss" drumstick that creates a WiFi network called "ESPDRUMS"
+- This is the drumstick that creates a WiFi network called "ESPDRUMS"
 - It reads its own sensor to detect when you hit drums (Snare, Tom1, Tom2, and Ride)
 - It also acts like a relay station, collecting MIDI signals from your left stick and pedals
 - Finally, it sends everything to your computer
-- **Think of it as:** The band leader who coordinates everyone
 
 **The Left Stick** - Your WiFi Client (`tcp_drum_sta.ino`)
 - This stick connects to the right stick's WiFi network
 - It detects hits for Tom3, Snare, and Crash cymbal
 - Sends its data to the right stick, which then forwards it to your computer
-- **Think of it as:** A team player that reports to the leader
 
 **Single Stick Mode** (`tcp_drum_direct.ino`)
 - Just want to test one stick? Use this!
@@ -34,22 +31,21 @@ Think of your drumsticks as the stars of the show. You'll typically use two of t
 - Prefers Bluetooth over WiFi
 - Saves battery but has a bit more delay (still totally playable!)
 - Good if you don't want to deal with WiFi setup
+- Noisy bluetooth connections causes frequent disruption
 
 ---
 
-### Your Foot Pedals 🦶
+### Your Foot Pedals 
 
 **Kick Pedal** - The Bass Drum Beat
 - **WiFi Mode** (`tcp_kick_pedal_sta.ino`): Connects to your right stick's network
 - **Direct Mode** (`tcp_kick_pedal_direct.ino`): Connects straight to your computer
 - **Bluetooth Mode** (`ble_kick_pedal.ino`): Uses Bluetooth instead
-- **What it does:** Detects when you stomp and sends a "BOOM" (MIDI note 36)
 
 **Hi-Hat Pedal** - Open and Closed
 - **WiFi Mode** (`tcp_hihat_pedal_sta.ino`): Connects to your right stick
 - **Direct Mode** (`tcp_hihat_pedal_direct.ino`): Connects to your computer
 - **Bluetooth Mode** (`ble_hihat_pedal.ino`): Bluetooth version
-- **What it does:** Knows if you're keeping it closed or opening it for that classic "chick" sound
 
 ---
 
@@ -59,7 +55,7 @@ Think of your drumsticks as the stars of the show. You'll typically use two of t
 
 ---
 
-## 🎸 How Does Everything Work Together?
+## How Does Everything Work Together?
 
 Imagine you're setting up a band. Here's how your air drums communicate:
 
@@ -93,7 +89,7 @@ Imagine you're setting up a band. Here's how your air drums communicate:
 4. The right stick forwards everything to your computer on port 6000
 5. Your computer plays the drum sounds!
 
-**Why this is cool:** Super low lag (8-25 milliseconds), which feels instant when you play!
+**Why this is cool:** Super low latency (15-40 milliseconds), which feels instant when you play!
 
 ---
 
@@ -137,8 +133,9 @@ Your MPU6050 sensor connects to your ESP32 like this:
 - **GND** → Ground pin
 - **SDA** → Pin GPIO6 (labeled D4 on the board)
 - **SCL** → Pin GPIO7 (labeled D5 on the board)
+- **AD0** → Ground pin
+- **INT** → Pin GPIO5 (labeled D3 on the board)
 
-**Pro tip:** If you have two sticks, one sensor should have its AD0 pin connected to ground (address 0x68), and the other to 3.3V (address 0x69). This way they don't get confused when talking on the same I2C "bus."
 
 **Battery:** Connect a 3.7V LiPo battery to the BAT+ and BAT- pads on the back of your ESP32. It'll charge automatically when you plug in USB!
 
@@ -247,6 +244,7 @@ When you swing your right stick in different directions, it knows which drum you
 - Make sure the sensor has power (VCC to 3.3V, GND to GND)
 - Open **Tools → Serial Monitor** and see if it says "MPU6050 not found"
 - Try changing the I2C address from 0x68 to 0x69 (or vice versa)
+- Try powering on and off the ESP (yes oftentimes just turning it on and off again is the correct solution
 
 **"My stick won't connect to WiFi!"**
 - Did you upload the right stick first? It creates the "ESPDRUMS" network
@@ -283,19 +281,13 @@ When you swing your right stick in different directions, it knows which drum you
 
 ---
 
-## 📊 What to Expect (Performance-wise)
+## What to Expect (Performance-wise)
 
-| Setup | How Fast? | Reliability | Battery Life |
-|-------|-----------|-------------|--------------|
-| WiFi (Recommended) | Super fast (8-25ms) | Rock solid | 4-6 hours |
-| Bluetooth | Pretty fast (15-40ms) | Good (occasional hiccup) | 6-8 hours |
-| Direct Mode | Very fast (10-20ms) | Rock solid | 4-6 hours |
-
-**Translation:** WiFi feels instant. Bluetooth is still great but might have the occasional tiny delay. All modes work well for jamming!
+ WiFi feels instant. Bluetooth is still great but might have the occasional tiny delay. All modes work well for jamming!
 
 ---
 
-## 💡 Quick Tips
+##  Quick Tips
 
 - **Always upload the right stick first** - It needs to create the WiFi network before anyone else can connect
 - **Label your sticks!** - Mark which is Left (Tom3/Crash) and which is Right (Tom1/Tom2/Ride)
@@ -327,4 +319,4 @@ When you swing your right stick in different directions, it knows which drum you
 
 **Questions? Issues? Improvements?**
 
-Check out the main project README or open an issue on GitHub. Happy drumming! 🎸🔥
+Check out the main project README or open an issue on GitHub. Happy drumming! 
