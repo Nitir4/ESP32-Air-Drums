@@ -7,19 +7,33 @@ import os
 class AudioEngine:
     """Audio engine that plays drum samples for MIDI notes.
 
-    - Generates synthetic drum samples using numpy and pygame.mixer
+    - Loads audio samples from assets folder if available
+    - Falls back to synthetic samples if assets not found
+    - Uses velocity-based sample selection (50% vs 100% samples)
     - Maps MIDI notes to different drum sounds (kick, snare, hihat, toms, etc.)
     - Keeps track of active Channels to stop on note_off.
     """
 
-    def __init__(self, sample_rate: int = 44100) -> None:
+    def __init__(self, sample_rate: int = 44100, velocity_threshold: int = 100) -> None:
         self.sample_rate = sample_rate
+        self.velocity_threshold = velocity_threshold  # Threshold between 50% and 100% samples
         pygame.mixer.init(frequency=sample_rate, size=-16, channels=2, buffer=512)
         self._active: Dict[int, pygame.mixer.Channel] = {}
         
-        # Pre-generate drum samples for better performance
+        # Asset samples (50% and 100% versions)
+        self._asset_samples_50: Dict[str, pygame.mixer.Sound] = {}
+        self._asset_samples_100: Dict[str, pygame.mixer.Sound] = {}
+        self._use_assets = False
+        
+        # Fallback synthetic samples
         self._drum_samples: Dict[str, pygame.mixer.Sound] = {}
-        self._generate_drum_samples()
+        
+        # Try to load asset files first
+        self._load_asset_samples()
+        
+        # If no assets, generate synthetic samples as fallback
+        if not self._use_assets:
+            self._generate_drum_samples()
         
         # Map MIDI notes to drum sounds (General MIDI drum map)
         self._note_map = {
@@ -27,20 +41,58 @@ class AudioEngine:
             36: "kick",      # Bass Drum 1
             38: "snare",     # Acoustic Snare
             40: "snare",     # Electric Snare
-            42: "hihat_closed",  # Closed Hi-Hat
-            44: "hihat_closed",  # Pedal Hi-Hat
-            46: "hihat_open",    # Open Hi-Hat
+            42: "hihat",     # Closed Hi-Hat
+            44: "hihat",     # Pedal Hi-Hat
+            46: "hihat",     # Open Hi-Hat
             47: "tom_low",   # Low-Mid Tom
             48: "tom_mid",   # Hi-Mid Tom
             50: "tom_high",  # High Tom
             49: "crash",     # Crash Cymbal 1
-            51: "ride",      # Ride Cymbal 1
+            51: "crash",     # Ride Cymbal 1 (mapped to crash)
             52: "crash",     # Chinese Cymbal
-            53: "ride",      # Ride Bell
+            53: "crash",     # Ride Bell (mapped to crash)
             41: "tom_low",   # Low Floor Tom
             43: "tom_low",   # High Floor Tom
             45: "tom_mid",   # Low Tom
         }
+        
+    def _load_asset_samples(self) -> None:
+        """Load audio samples from assets folder if available."""
+        assets_dir = os.path.join(os.path.dirname(__file__), "assets")
+        
+        if not os.path.exists(assets_dir):
+            print("Assets folder not found. Using synthetic samples.")
+            return
+        
+        # Map drum types to asset file names
+        asset_map = {
+            "kick": "Kick",
+            "snare": "Snare",
+            "hihat": "Hi-Hat",
+            "tom_low": "TomL",
+            "tom_mid": "TomM",
+            "tom_high": "TomH",
+            "crash": "Crash",
+        }
+        
+        loaded_count = 0
+        for drum_type, file_prefix in asset_map.items():
+            file_50 = os.path.join(assets_dir, f"{file_prefix}_50.mp3")
+            file_100 = os.path.join(assets_dir, f"{file_prefix}_100.mp3")
+            
+            try:
+                if os.path.exists(file_50) and os.path.exists(file_100):
+                    self._asset_samples_50[drum_type] = pygame.mixer.Sound(file_50)
+                    self._asset_samples_100[drum_type] = pygame.mixer.Sound(file_100)
+                    loaded_count += 1
+            except Exception as e:
+                print(f"Error loading {drum_type} samples: {e}")
+        
+        if loaded_count > 0:
+            self._use_assets = True
+            print(f"Loaded {loaded_count} drum sample pairs from assets folder.")
+        else:
+            print("No valid asset samples found. Using synthetic samples.")
 
     def _generate_drum_samples(self) -> None:
         """Generate synthetic drum samples using audio synthesis."""
@@ -53,13 +105,9 @@ class AudioEngine:
         snare = self._create_snare()
         self._drum_samples["snare"] = snare
         
-        # Closed hi-hat - short metallic noise
-        hihat_closed = self._create_hihat_closed()
-        self._drum_samples["hihat_closed"] = hihat_closed
-        
-        # Open hi-hat - longer metallic noise
-        hihat_open = self._create_hihat_open()
-        self._drum_samples["hihat_open"] = hihat_open
+        # Hi-hat - metallic noise (closed sound as default)
+        hihat = self._create_hihat_closed()
+        self._drum_samples["hihat"] = hihat
         
         # Toms - tuned drums
         self._drum_samples["tom_low"] = self._create_tom(120)
@@ -69,10 +117,6 @@ class AudioEngine:
         # Crash cymbal - long metallic wash
         crash = self._create_crash()
         self._drum_samples["crash"] = crash
-        
-        # Ride cymbal - sustained metallic ping
-        ride = self._create_ride()
-        self._drum_samples["ride"] = ride
 
     def _create_kick(self) -> pygame.mixer.Sound:
         """Create a synthesized kick drum sound."""
@@ -233,27 +277,51 @@ class AudioEngine:
         return pygame.sndarray.make_sound(stereo)
 
     def note_on(self, note: int, velocity: int) -> None:
-        """Play drum sample for the given MIDI note with velocity-sensitive volume."""
+        """Play drum sample for the given MIDI note with velocity-sensitive sample selection.
+        
+        If assets are available:
+        - velocity < threshold: play 50% sample
+        - velocity >= threshold: play 100% sample
+        
+        If no assets (fallback):
+        - Use synthetic samples with velocity-based volume
+        """
         # Map note to drum type
         drum_type = self._note_map.get(note, "snare")  # default to snare for unmapped notes
         
-        # Get the sample
-        sound = self._drum_samples.get(drum_type)
-        if not sound:
-            return
-        
-        # Adjust volume based on velocity with exponential curve for more natural dynamics
-        # MIDI velocity ranges from 1-127
-        # Use exponential curve to make quiet hits quieter and loud hits louder
-        velocity_normalized = velocity / 127.0
-        
-        # Apply exponential curve (power of 2 makes it more responsive)
-        volume = velocity_normalized ** 1.5
-        
-        # Ensure minimum audible volume for very soft hits
-        volume = max(0.1, min(1.0, volume))
-        
-        sound.set_volume(volume)
+        if self._use_assets:
+            # Use asset-based samples with velocity threshold
+            if velocity >= self.velocity_threshold:
+                # High velocity - use 100% sample
+                sound = self._asset_samples_100.get(drum_type)
+            else:
+                # Low/medium velocity - use 50% sample
+                sound = self._asset_samples_50.get(drum_type)
+            
+            if not sound:
+                return
+            
+            # Set consistent volume for asset samples
+            sound.set_volume(1.0)
+            
+        else:
+            # Fallback: use synthetic samples with velocity-based volume
+            sound = self._drum_samples.get(drum_type)
+            if not sound:
+                return
+            
+            # Adjust volume based on velocity with exponential curve for more natural dynamics
+            # MIDI velocity ranges from 1-127
+            # Use exponential curve to make quiet hits quieter and loud hits louder
+            velocity_normalized = velocity / 127.0
+            
+            # Apply exponential curve (power of 2 makes it more responsive)
+            volume = velocity_normalized ** 1.5
+            
+            # Ensure minimum audible volume for very soft hits
+            volume = max(0.1, min(1.0, volume))
+            
+            sound.set_volume(volume)
         
         # Play the sound
         channel = sound.play()

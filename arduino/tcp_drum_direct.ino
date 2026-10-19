@@ -29,8 +29,8 @@
 // ========================================
 // Configuration
 // ========================================
-const char* WIFI_SSID = "ESPDRUMS";            // AP created by tcp_ap_relay.ino
-const char* WIFI_PASSWORD = "Nitirocks";       // AP password
+const char* WIFI_SSID = "YOUR_WIFI_SSID";            // AP created by tcp_ap_relay.ino
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";       // AP password
 
 // ⚠️ IMPORTANT: Find desktop's IP on ESPDRUMS network
 // After connecting laptop to ESPDRUMS WiFi, run: ipconfig | findstr IPv4

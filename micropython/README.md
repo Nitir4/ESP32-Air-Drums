@@ -185,8 +185,8 @@ MIDI_CHANNEL = 9                   # MIDI channel (usually 9 for drums)
 
 ### WiFi Settings (ap_stable.py)
 ```python
-AP_SSID = "ESPDRUMS"
-AP_PASSWORD = "Nitirocks"
+AP_SSID = "YOUR_WIFI_SSID"
+AP_PASSWORD = "YOUR_WIFI_PASSWORD"
 ```
 
 ### Hit Sensitivity

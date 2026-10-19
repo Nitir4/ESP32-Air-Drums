@@ -25,8 +25,8 @@
 // Configuration
 // ========================================
 // WiFi Settings
-const char* WIFI_SSID = "ESPDRUMS";
-const char* WIFI_PASSWORD = "Nitirocks";
+const char* WIFI_SSID = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* AP_SERVER_IP = "192.168.4.1";
 const int AP_SERVER_PORT = 5000;
 
@@ -63,9 +63,10 @@ DrumZone zones[3] = {
 // MPU6050 I2C Pins (ESP32 XIAO C3)
 #define I2C_SDA 6
 #define I2C_SCL 7
-#define MPU_ADDR 0x69  // STA drum uses 0x69
+#define MPU_ADDR 0x68  // STA drum uses 0x68
+#define MPU_INT_PIN 5  // MPU6050 interrupt pin
 
-// Motion Detection
+// Motion DetectionACC
 #define SAMPLES_CAL 500
 #define ALPHA_ACC_LP 0.5
 #define THRESHOLD_HIT 10.0     // Acceleration magnitude threshold (m/s²) - lowered for easier triggering
@@ -99,8 +100,18 @@ unsigned long last_reconnect_attempt = 0;
 uint8_t current_note = 0;
 bool waiting_for_note_off = false;
 
+// Interrupt flag
+volatile bool mpuInterrupt = false;
+
 // Debug
 static int debug_counter = 0;
+
+// ========================================
+// Interrupt Handler
+// ========================================
+void IRAM_ATTR dmpDataReady() {
+  mpuInterrupt = true;
+}
 
 // ========================================
 // WiFi Connection
@@ -294,29 +305,69 @@ void setup() {
   
   connectWiFi();
 
-  // Initialize I2C
-  Serial.println("\nInitializing MPU6050...");
+  // Initialize I2C with strong pull-ups
+  Serial.println("\nInitializing I2C...");
   Serial.printf("   I2C Pins: SDA=GPIO%d, SCL=GPIO%d\n", I2C_SDA, I2C_SCL);
-  Wire.begin(I2C_SDA, I2C_SCL);
+  
+  // End any previous I2C session
+  Wire.end();
   delay(100);
+  
+  // Configure pins with internal pull-up resistors enabled
+  pinMode(I2C_SDA, INPUT_PULLUP);
+  pinMode(I2C_SCL, INPUT_PULLUP);
+  delay(100);
+  
+  // Start I2C
+  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.setClock(50000);  // Lower clock speed (50kHz) for better stability with weak pull-ups
+  delay(500);  // Give I2C bus time to stabilize
+  
+  Serial.println("\n⚠️  NOTE: If you see many ghost I2C addresses,");
+  Serial.println("   you NEED external 4.7kΩ pull-up resistors!");
+  Serial.println("   Connect: SDA -> 4.7kΩ -> 3.3V");
+  Serial.println("           SCL -> 4.7kΩ -> 3.3V\n");
   
   // Scan I2C bus first
   scanI2C();
 
-  // This drum uses MPU at 0x69 (AD0=HIGH)
+  Serial.println("\nInitializing MPU6050...");
+  
+  // Try MPU_ADDR first (should be 0x68)
+  bool mpuFound = false;
+  
   Serial.printf("Trying MPU6050 at 0x%02X...\n", MPU_ADDR);
-  if (!mpu.begin(MPU_ADDR, &Wire)) {
-    Serial.printf("⚠️  Failed at 0x%02X, trying 0x68...\n", MPU_ADDR);
-    
-    if (!mpu.begin(0x68, &Wire)) {
-      Serial.println("❌ MPU6050 not found at either address!");
-      Serial.println("   Check your wiring and restart.");
-      while (1) delay(1000);
-    } else {
-      Serial.println("✅ MPU6050 found at 0x68!");
-    }
-  } else {
+  if (mpu.begin(MPU_ADDR, &Wire)) {
     Serial.printf("✅ MPU6050 found at 0x%02X!\n", MPU_ADDR);
+    mpuFound = true;
+  } else {
+    Serial.printf("⚠️  Failed at 0x%02X\n", MPU_ADDR);
+    delay(100);
+    
+    // Try alternate address as fallback
+    uint8_t alt_addr = (MPU_ADDR == 0x68) ? 0x69 : 0x68;
+    Serial.printf("Trying MPU6050 at 0x%02X...\n", alt_addr);
+    if (mpu.begin(alt_addr, &Wire)) {
+      Serial.printf("✅ MPU6050 found at 0x%02X!\n", alt_addr);
+      mpuFound = true;
+    }
+  }
+  
+  if (!mpuFound) {
+    Serial.println("❌ MPU6050 not found!");
+    Serial.println("\n   Common issues:");
+    Serial.println("   1. Check wiring:");
+    Serial.printf("      SDA -> GPIO%d\n", I2C_SDA);
+    Serial.printf("      SCL -> GPIO%d\n", I2C_SCL);
+    Serial.println("      VCC -> 3.3V (NOT 5V!)");
+    Serial.println("      GND -> GND");
+    Serial.println("   2. MPU6050 AD0 pin:");
+    Serial.println("      AD0 -> GND for address 0x68");
+    Serial.println("      AD0 -> VCC for address 0x69");
+    Serial.println("   3. Try external 4.7kΩ pull-up resistors on SDA/SCL");
+    Serial.println("\n   Retrying in 5 seconds...");
+    delay(5000);
+    ESP.restart();
   }
   
   Serial.println("Configuring MPU6050...");
@@ -324,31 +375,60 @@ void setup() {
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
   
+  // Enable interrupt on data ready
+  pinMode(MPU_INT_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(MPU_INT_PIN), dmpDataReady, RISING);
+  Serial.printf("✅ MPU6050 interrupt configured on GPIO%d\n", MPU_INT_PIN);
+  
+  delay(100);  // Let MPU configure
+  
+  // Verify MPU is responding
+  sensors_event_t test_a, test_g, test_temp;
+  if (!mpu.getEvent(&test_a, &test_g, &test_temp)) {
+    Serial.println("❌ MPU6050 not responding to read commands!");
+    Serial.println("   Retrying in 3 seconds...");
+    delay(3000);
+    ESP.restart();
+  }
+  Serial.println("✅ MPU6050 responding correctly!");
+  
   // Calibration
   Serial.println("📊 Calibrating - keep board still...");
+  ax_bias = 0.0; ay_bias = 0.0; az_bias = 0.0;
+  gx_bias = 0.0; gy_bias = 0.0; gz_bias = 0.0;
+  
+  int successful_reads = 0;
   for (int i = 0; i < SAMPLES_CAL; i++) {
     sensors_event_t a_temp, g_temp, temp_temp;
-    mpu.getEvent(&a_temp, &g_temp, &temp_temp);
-    
-    ax_bias += a_temp.acceleration.x;
-    ay_bias += a_temp.acceleration.y;
-    az_bias += a_temp.acceleration.z;
-    gx_bias += g_temp.gyro.x;
-    gy_bias += g_temp.gyro.y;
-    gz_bias += g_temp.gyro.z;
-    
+    if (mpu.getEvent(&a_temp, &g_temp, &temp_temp)) {
+      ax_bias += a_temp.acceleration.x;
+      ay_bias += a_temp.acceleration.y;
+      az_bias += a_temp.acceleration.z;
+      gx_bias += g_temp.gyro.x;
+      gy_bias += g_temp.gyro.y;
+      gz_bias += g_temp.gyro.z;
+      successful_reads++;
+    }
     delay(10);
   }
   
-  ax_bias /= SAMPLES_CAL;
-  ay_bias /= SAMPLES_CAL;
-  az_bias /= SAMPLES_CAL;
-  gx_bias /= SAMPLES_CAL;
-  gy_bias /= SAMPLES_CAL;
-  gz_bias /= SAMPLES_CAL;
+  if (successful_reads < SAMPLES_CAL / 2) {
+    Serial.printf("❌ Calibration failed! Only %d/%d successful reads\n", successful_reads, SAMPLES_CAL);
+    Serial.println("   Retrying in 3 seconds...");
+    delay(3000);
+    ESP.restart();
+  }
+  
+  ax_bias /= successful_reads;
+  ay_bias /= successful_reads;
+  az_bias /= successful_reads;
+  gx_bias /= successful_reads;
+  gy_bias /= successful_reads;
+  gz_bias /= successful_reads;
   az_bias -= 9.81;
   
-  Serial.println("✅ Calibration complete!");
+  Serial.printf("✅ Calibration complete! (%d samples)\n", successful_reads);
+  Serial.printf("   Bias: ax=%.2f, ay=%.2f, az=%.2f\n", ax_bias, ay_bias, az_bias);
   
   // Try initial TCP connection
   connectToAP();
@@ -379,8 +459,16 @@ void loop() {
     }
   }
   
-  // Read sensor
-  mpu.getEvent(&a, &g, &temp);
+  // Read sensor only when interrupt fires (more efficient)
+  if (!mpuInterrupt) {
+    return;  // No new data available
+  }
+  mpuInterrupt = false;
+  
+  if (!mpu.getEvent(&a, &g, &temp)) {
+    // Skip this loop iteration if sensor read fails
+    return;
+  }
 
   // Apply calibration bias
   float ax = a.acceleration.x - ax_bias;

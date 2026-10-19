@@ -20,13 +20,15 @@
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <lwip/sockets.h>
+#include <lwip/netdb.h>
 
 // ========================================
 // Configuration
 // ========================================
 // WiFi Settings
-const char* WIFI_SSID = "ESPDRUMS";
-const char* WIFI_PASSWORD = "Nitirocks";
+const char* WIFI_SSID = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* AP_SERVER_IP = "192.168.4.1";  // AP's IP address
 const int AP_SERVER_PORT = 5000;           // AP's relay port
 
@@ -42,7 +44,7 @@ const int AP_SERVER_PORT = 5000;           // AP's relay port
 
 // Pedal Detection
 #define SAMPLES_CAL 500
-#define LOOP_DELAY_MS 20
+// No loop delay - run at full speed for stable TCP connection
 #define ALPHA_ACC_LP 0.3
 #define THRESHOLD_PRESS -0.7
 #define THRESHOLD_RELEASE -0.2
@@ -123,10 +125,30 @@ bool connectToAP() {
     return true;
   }
   
+  // Close any previous connection
+  tcpClient.stop();
+  delay(100);
+  
   Serial.printf("🔗 Connecting to AP server %s:%d...\n", AP_SERVER_IP, AP_SERVER_PORT);
   
   if (tcpClient.connect(AP_SERVER_IP, AP_SERVER_PORT)) {
+    // Disable Nagle's algorithm to prevent TCP buffering delays
+    tcpClient.setNoDelay(true);
+    
+    // Enable TCP keep-alive
+    int keepAlive = 1;
+    int keepIdle = 5;      // Start probes after 5 seconds of idle
+    int keepInterval = 5;  // Send probes every 5 seconds
+    int keepCount = 3;     // Close connection after 3 failed probes
+    
+    tcpClient.setSocketOption(SOL_SOCKET, SO_KEEPALIVE, (void*)&keepAlive, sizeof(keepAlive));
+    tcpClient.setSocketOption(IPPROTO_TCP, TCP_KEEPIDLE, (void*)&keepIdle, sizeof(keepIdle));
+    tcpClient.setSocketOption(IPPROTO_TCP, TCP_KEEPINTVL, (void*)&keepInterval, sizeof(keepInterval));
+    tcpClient.setSocketOption(IPPROTO_TCP, TCP_KEEPCNT, (void*)&keepCount, sizeof(keepCount));
+    
     Serial.println("✅ TCP Connected to AP!");
+    Serial.println("   TCP_NODELAY enabled for low latency");
+    Serial.println("   TCP Keep-Alive enabled");
     return true;
   } else {
     Serial.println("❌ TCP Connection to AP Failed!");
@@ -144,6 +166,7 @@ void sendMIDI(uint8_t status, uint8_t note, uint8_t velocity) {
   
   uint8_t midiMsg[3] = {status, note, velocity};
   tcpClient.write(midiMsg, 3);
+  tcpClient.flush();  // Force immediate send, don't buffer
 }
 
 void sendNoteOn(uint8_t note, uint8_t velocity = 127) {
@@ -276,10 +299,10 @@ void loop() {
   
   if (!tcpClient.connected()) {
     if (now - last_reconnect_attempt > RECONNECT_INTERVAL_MS) {
-      Serial.println("⚠️  TCP disconnected! Reconnecting...");
       connectToAP();
       last_reconnect_attempt = now;
     }
+    return;  // Skip sensor reading if not connected
   }
 
   // Read sensor
@@ -305,8 +328,9 @@ void loop() {
     }
   }
 
-  // STATE MACHINE
+  // Trigger logic - only send MIDI on initial press, wait for full release before next trigger
   if (!pedal_pressed) {
+    // Pedal is released - check for press
     if (az_f < THRESHOLD_PRESS && (now - last_trigger) > DEBOUNCE_MS) {
       Serial.printf("🦶 KICK PRESSED! az_f=%.3f\n", az_f);
       pedal_pressed = true;
@@ -319,9 +343,11 @@ void loop() {
       last_trigger = now;
     }
   } else {
+    // Pedal is pressed - ONLY check for release, do NOT retrigger
     if (az_f > THRESHOLD_RELEASE) {
       Serial.printf("🦶 KICK RELEASED! az_f=%.3f\n", az_f);
       pedal_pressed = false;
+      // Note: No new MIDI sent on release, just reset state
     }
   }
 
@@ -332,5 +358,5 @@ void loop() {
     note_off_pending = false;
   }
 
-  delay(LOOP_DELAY_MS);
+  // No delay - run as fast as possible for low latency and stable TCP
 }

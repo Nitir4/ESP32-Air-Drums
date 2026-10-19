@@ -208,8 +208,8 @@ Set to `true` for gentle playing, `false` for rock drumming!
 
 **WiFi Network Name (if you want to change it)**
 ```cpp
-const char* AP_SSID = "ESPDRUMS";           // The WiFi name
-const char* AP_PASSWORD = "Nitirocks";      // The password
+const char* AP_SSID = "YOUR_WIFI_SSID";           // The WiFi name
+const char* AP_PASSWORD = "YOUR_WIFI_PASSWORD";      // The password
 ```
 
 ---

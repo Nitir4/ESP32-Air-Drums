@@ -5,15 +5,15 @@ Simple HTTP uploader for MicroPython. Run this on the ESP32 AP and POST files to
 This writes the file and reboots the device.
 
 Usage (PC connected to ESP32 AP):
-curl -X POST --data-binary @main.py "http://192.168.4.1/upload?file=main.py&token=NitiOTA"
+curl -X POST --data-binary @main.py "http://192.168.4.1/upload?file=main.py&token=YOUR_OTA_TOKEN"
 """
 
 import network, socket, time, machine, gc, ure
 from micropython import const
 
-SSID = "ESPDRUMS"
-PASSWORD = "Nitirocks"
-UPLOAD_TOKEN = "NitiOTA"
+SSID = "YOUR_WIFI_SSID"
+PASSWORD = "YOUR_WIFI_PASSWORD"
+UPLOAD_TOKEN = "YOUR_OTA_TOKEN"
 SERVER_PORT = const(80)
 
 # Optional: UDP MIDI send parameters. Set DEST to the IP of the host listening for MIDI

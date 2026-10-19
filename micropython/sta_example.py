@@ -11,8 +11,8 @@ import time
 import struct
 import gc
 
-WIFI_SSID = "YOUR_ROUTER_SSID"
-WIFI_PASS = "YOUR_ROUTER_PASSWORD"
+WIFI_SSID = "YOUR_WIFI_SSID"
+WIFI_PASS = "YOUR_WIFI_PASSWORD"
 SERVER_IP = "192.168.1.100"  # set to your PC's IP on the router
 SERVER_PORT = 6000
 

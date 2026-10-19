@@ -25,14 +25,13 @@
 // Configuration
 // ========================================
 // WiFi Settings
-const char* WIFI_SSID = "ESPDRUMS";
-const char* WIFI_PASSWORD = "Nitirocks";
+const char* WIFI_SSID = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* AP_SERVER_IP = "192.168.4.1";
 const int AP_SERVER_PORT = 5000;
 
-// MIDI Settings - Hi-Hat has TWO sounds!
-#define MIDI_NOTE_CLOSED 42
-#define MIDI_NOTE_OPEN 46
+// MIDI Settings - Hi-Hat (simplified to single note)
+#define MIDI_NOTE 46  // Using open hi-hat sound for all triggers
 #define MIDI_VELOCITY 100
 #define MIDI_CHANNEL 9
 #define NOTE_OFF_DELAY_MS 50
@@ -43,7 +42,7 @@ const int AP_SERVER_PORT = 5000;
 
 // Pedal Detection
 #define SAMPLES_CAL 500
-#define LOOP_DELAY_MS 20
+// No loop delay - run at full speed for stable TCP connection
 #define ALPHA_ACC_LP 0.3
 #define THRESHOLD_PRESS -0.6
 #define THRESHOLD_RELEASE -0.2
@@ -71,7 +70,6 @@ bool pedal_closed = false;
 unsigned long last_trigger = 0;
 unsigned long note_off_time = 0;
 bool note_off_pending = false;
-uint8_t last_note = 0;
 unsigned long last_reconnect_attempt = 0;
 
 // Debug
@@ -128,7 +126,10 @@ bool connectToAP() {
   Serial.printf("🔗 Connecting to AP server %s:%d...\n", AP_SERVER_IP, AP_SERVER_PORT);
   
   if (tcpClient.connect(AP_SERVER_IP, AP_SERVER_PORT)) {
+    // Disable Nagle's algorithm to prevent TCP buffering delays
+    tcpClient.setNoDelay(true);
     Serial.println("✅ TCP Connected to AP!");
+    Serial.println("   TCP_NODELAY enabled for low latency");
     return true;
   } else {
     Serial.println("❌ TCP Connection to AP Failed!");
@@ -146,6 +147,7 @@ void sendMIDI(uint8_t status, uint8_t note, uint8_t velocity) {
   
   uint8_t midiMsg[3] = {status, note, velocity};
   tcpClient.write(midiMsg, 3);
+  tcpClient.flush();  // Force immediate send, don't buffer
 }
 
 void sendNoteOn(uint8_t note, uint8_t velocity = 100) {
@@ -307,43 +309,32 @@ void loop() {
     }
   }
 
-  // STATE MACHINE
+  // Trigger on pedal press (like kick pedal - simplified logic)
   if (!pedal_closed) {
-    // Hi-hat is OPEN, waiting for CLOSE
     if (az_f < THRESHOLD_PRESS && (now - last_trigger) > DEBOUNCE_MS) {
-      Serial.printf("🎩 HI-HAT CLOSED! az_f=%.3f\n", az_f);
+      Serial.printf("🎩 HI-HAT PRESS! az_f=%.3f\n", az_f);
       pedal_closed = true;
 
-      sendNoteOn(MIDI_NOTE_CLOSED, MIDI_VELOCITY);
-      Serial.printf("✅ Closed Hi-Hat Note On sent to AP (note %d)\n", MIDI_NOTE_CLOSED);
+      sendNoteOn(MIDI_NOTE, MIDI_VELOCITY);
+      Serial.printf("✅ Hi-Hat Note On sent to AP (note %d)\n", MIDI_NOTE);
 
       note_off_time = now + NOTE_OFF_DELAY_MS;
       note_off_pending = true;
-      last_note = MIDI_NOTE_CLOSED;
       last_trigger = now;
     }
   } else {
-    // Hi-hat is CLOSED, waiting for OPEN
-    if (az_f > THRESHOLD_RELEASE && (now - last_trigger) > DEBOUNCE_MS) {
-      Serial.printf("🎩 HI-HAT OPENED! az_f=%.3f\n", az_f);
+    // Release detection for state reset
+    if (az_f > THRESHOLD_RELEASE) {
+      Serial.printf("🎩 Released! az_f=%.3f\n", az_f);
       pedal_closed = false;
-
-      sendNoteOn(MIDI_NOTE_OPEN, MIDI_VELOCITY);
-      Serial.printf("✅ Open Hi-Hat Note On sent to AP (note %d)\n", MIDI_NOTE_OPEN);
-
-      note_off_time = now + NOTE_OFF_DELAY_MS;
-      note_off_pending = true;
-      last_note = MIDI_NOTE_OPEN;
-      last_trigger = now;
     }
   }
 
   // Non-blocking Note Off
   if (note_off_pending && (now >= note_off_time)) {
-    sendNoteOff(last_note);
-    Serial.printf("✅ Note Off sent to AP (note %d)\n", last_note);
+    sendNoteOff(MIDI_NOTE);
     note_off_pending = false;
   }
 
-  delay(LOOP_DELAY_MS);
+  // No delay - run as fast as possible for low latency and stable TCP
 }

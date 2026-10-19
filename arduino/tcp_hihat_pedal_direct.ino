@@ -29,8 +29,8 @@
 // Configuration
 // ========================================
 // Access Point Settings
-const char* AP_SSID = "HIHAT_PEDAL";          // This device's AP name
-const char* AP_PASSWORD = "Nitirocks";        // AP password
+const char* AP_SSID = "YOUR_WIFI_SSID";          // This device's AP name
+const char* AP_PASSWORD = "YOUR_WIFI_PASSWORD";        // AP password
 const IPAddress AP_IP(192, 168, 5, 1);        // This AP's IP
 const IPAddress GATEWAY(192, 168, 5, 1);
 const IPAddress SUBNET(255, 255, 255, 0);
@@ -53,7 +53,7 @@ bool desktopIPFound = false;
 
 // Pedal Detection
 #define SAMPLES_CAL 500
-#define LOOP_DELAY_MS 20
+// No loop delay - run at full speed for stable TCP connection
 #define ALPHA_ACC_LP 0.3
 #define THRESHOLD_PRESS -0.6
 #define THRESHOLD_RELEASE -0.2
@@ -147,7 +147,10 @@ bool connectToDesktop() {
   Serial.printf("🔗 Connecting to desktop %s:%d...\n", desktopIP.toString().c_str(), DESKTOP_PORT);
   
   if (desktopClient.connect(desktopIP, DESKTOP_PORT)) {
+    // Disable Nagle's algorithm to prevent TCP buffering delays
+    desktopClient.setNoDelay(true);
     Serial.println("✅ TCP Connected to Desktop!");
+    Serial.println("   TCP_NODELAY enabled for low latency");
     return true;
   } else {
     Serial.println("❌ TCP Connection Failed!");
@@ -164,6 +167,7 @@ void sendMIDI(uint8_t status, uint8_t note, uint8_t velocity) {
   
   uint8_t midiMsg[3] = {status, note, velocity};
   desktopClient.write(midiMsg, 3);
+  desktopClient.flush();  // Force immediate send, don't buffer
 }
 
 void sendNoteOn(uint8_t note, uint8_t velocity = 100) {
@@ -361,5 +365,5 @@ void loop() {
     note_off_pending = false;
   }
 
-  delay(LOOP_DELAY_MS);
+  // No delay - run as fast as possible for low latency and stable TCP
 }

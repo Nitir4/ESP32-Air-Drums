@@ -25,13 +25,15 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <esp_wifi.h>
+#include <lwip/sockets.h>
+#include <lwip/netdb.h>
 
 // ========================================
 // Configuration
 // ========================================
 // Access Point Settings
-const char* AP_SSID = "ESPDRUMS";
-const char* AP_PASSWORD = "Nitirocks";
+const char* AP_SSID = "YOUR_WIFI_SSID";
+const char* AP_PASSWORD = "YOUR_WIFI_PASSWORD";
 const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress GATEWAY(192, 168, 4, 1);
 const IPAddress SUBNET(255, 255, 255, 0);
@@ -470,8 +472,21 @@ void loop() {
         if (staClients[i]) staClients[i].stop();
         staClients[i] = newClient;
         staClients[i].setNoDelay(true);  // Disable Nagle's algorithm
+        
+        // Enable TCP keep-alive for client connections
+        int keepAlive = 1;
+        int keepIdle = 10;      // Start probes after 10 seconds of idle
+        int keepInterval = 5;   // Send probes every 5 seconds
+        int keepCount = 3;      // Close connection after 3 failed probes
+        
+        staClients[i].setSocketOption(SOL_SOCKET, SO_KEEPALIVE, (void*)&keepAlive, sizeof(keepAlive));
+        staClients[i].setSocketOption(IPPROTO_TCP, TCP_KEEPIDLE, (void*)&keepIdle, sizeof(keepIdle));
+        staClients[i].setSocketOption(IPPROTO_TCP, TCP_KEEPINTVL, (void*)&keepInterval, sizeof(keepInterval));
+        staClients[i].setSocketOption(IPPROTO_TCP, TCP_KEEPCNT, (void*)&keepCount, sizeof(keepCount));
+        
         Serial.printf("✅ STA client %d connected: %s\n", 
                       i, staClients[i].remoteIP().toString().c_str());
+        Serial.println("   TCP_NODELAY and Keep-Alive enabled");
         added = true;
         break;
       }
@@ -494,6 +509,9 @@ void loop() {
           forwardToDesktop(buffer, len);
         }
       }
+    } else if (staClients[i]) {
+      // Client disconnected, clean up
+      staClients[i].stop();
     }
   }
   

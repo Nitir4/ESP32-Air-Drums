@@ -17,9 +17,11 @@ def main(argv: Tuple[str, ...] | None = None) -> None:
                        help="[TCP mode] Port to listen on (default: 6000)")
     parser.add_argument("--device-prefix", default="ESPDRUMS",
                        help="[BLE mode] BLE device name prefix to scan for (default: ESPDRUMS)")
+    parser.add_argument("--velocity-threshold", type=int, default=64,
+                       help="MIDI velocity threshold: <threshold uses 50%% sample, >=threshold uses 100%% sample (default: 64)")
     args = parser.parse_args(argv)
 
-    engine = AudioEngine()
+    engine = AudioEngine(velocity_threshold=args.velocity_threshold)
 
     # UI will run in main thread; run server in background thread
     ui = MidiUI(on_close=lambda: None)

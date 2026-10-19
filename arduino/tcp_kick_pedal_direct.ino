@@ -29,8 +29,8 @@
 // ========================================
 // Configuration
 // ========================================
-const char* WIFI_SSID = "ESPDRUMS";            // AP created by tcp_ap_relay.ino
-const char* WIFI_PASSWORD = "Nitirocks";       // AP password
+const char* WIFI_SSID = "YOUR_WIFI_SSID";            // AP created by tcp_ap_relay.ino
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";       // AP password
 
 // ⚠️ IMPORTANT: Find desktop's IP on ESPDRUMS network
 // After connecting laptop to ESPDRUMS WiFi, run: ipconfig | findstr IPv4
@@ -50,7 +50,7 @@ const int DESKTOP_PORT = 6000;                  // Desktop app port (NOT 5000!)
 
 // Pedal Detection
 #define SAMPLES_CAL 500
-#define LOOP_DELAY_MS 20
+// No loop delay - run at full speed for stable TCP connection
 #define ALPHA_ACC_LP 0.3
 #define THRESHOLD_PRESS -0.7
 #define THRESHOLD_RELEASE -0.2
@@ -115,7 +115,10 @@ bool connectToDesktop() {
   Serial.printf("🔗 Connecting to desktop %s:%d...\n", DESKTOP_IP, DESKTOP_PORT);
   
   if (tcpClient.connect(DESKTOP_IP, DESKTOP_PORT)) {
+    // Disable Nagle's algorithm to prevent TCP buffering delays
+    tcpClient.setNoDelay(true);
     Serial.println("✅ TCP Connected to Desktop!");
+    Serial.println("   TCP_NODELAY enabled for low latency");
     Serial.println("   Make sure app is running: python run.py");
     return true;
   } else {
@@ -133,6 +136,7 @@ void sendMIDI(uint8_t status, uint8_t note, uint8_t velocity) {
   
   uint8_t midiMsg[3] = {status, note, velocity};
   tcpClient.write(midiMsg, 3);
+  tcpClient.flush();  // Force immediate send, don't buffer
 }
 
 void sendNoteOn(uint8_t note, uint8_t velocity = 127) {
@@ -286,7 +290,9 @@ void loop() {
     }
   }
 
+  // Trigger logic - only send MIDI on initial press, wait for full release before next trigger
   if (!pedal_pressed) {
+    // Pedal is released - check for press
     if (az_f < THRESHOLD_PRESS && (now - last_trigger) > DEBOUNCE_MS) {
       Serial.printf("🦶 KICK! az_f=%.3f\n", az_f);
       pedal_pressed = true;
@@ -299,16 +305,19 @@ void loop() {
       last_trigger = now;
     }
   } else {
+    // Pedal is pressed - ONLY check for release, do NOT retrigger
     if (az_f > THRESHOLD_RELEASE) {
       Serial.printf("🦶 Released! az_f=%.3f\n", az_f);
       pedal_pressed = false;
+      // Note: No new MIDI sent on release, just reset state
     }
   }
 
+  // Non-blocking Note Off
   if (note_off_pending && (now >= note_off_time)) {
     sendNoteOff(MIDI_NOTE);
     note_off_pending = false;
   }
 
-  delay(LOOP_DELAY_MS);
+  // No delay - run as fast as possible for low latency and stable TCP
 }

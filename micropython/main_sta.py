@@ -32,8 +32,8 @@ import network, socket, struct, gc
 # ========================================
 # Configuration Block
 # ========================================
-SSID = "ESPDRUMS"
-PASSWORD = "Nitirocks"
+SSID = "YOUR_WIFI_SSID"
+PASSWORD = "YOUR_WIFI_PASSWORD"
 SERVER_IP = "192.168.4.1"   # IP of AP (ESP #1)
 SERVER_PORT = 6000
 

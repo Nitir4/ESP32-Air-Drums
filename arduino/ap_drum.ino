@@ -25,8 +25,8 @@
 // ========================================
 // Configuration
 // ========================================
-const char* SSID = "ESPDRUMS";
-const char* PASSWORD = "Nitirocks";
+const char* SSID = "YOUR_WIFI_SSID";
+const char* PASSWORD = "YOUR_WIFI_PASSWORD";
 const char* AP_IP_STR = "192.168.4.1";
 const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress GATEWAY(192, 168, 4, 1);

@@ -29,8 +29,8 @@ import network, socket, struct, gc
 # ========================================
 # Configuration Block
 # ========================================
-SSID = "ESPDRUMS"
-PASSWORD = "Nitirocks"
+SSID = "YOUR_WIFI_SSID"
+PASSWORD = "YOUR_WIFI_PASSWORD"
 AP_IP = "192.168.4.1"
 SERVER_PORT = 6000
 BROADCAST = '192.168.4.255'  # Broadcast to all connected devices
@@ -81,7 +81,7 @@ def setup_ap():
     sleep(1.0)  # Wait for interface to fully activate
     
     # Configure AP settings
-    print("Configuring AP: SSID='{}', Password='{}'".format(SSID, PASSWORD))
+    print("Configuring AP: SSID='YOUR_WIFI_SSID', Password='YOUR_WIFI_PASSWORD'".format(SSID, PASSWORD))
     ap.config(essid=SSID, password=PASSWORD, authmode=3)  # authmode=3 is WPA2-PSK
     sleep(0.5)
     
